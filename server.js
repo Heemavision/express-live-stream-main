@@ -4,7 +4,6 @@ import { dirname } from "path";
 import express from "express";
 import crypto from "crypto";
 import twilio from "twilio";
-import cors from "cors";
 
 dotenv.config();
 
@@ -23,22 +22,7 @@ const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
 
 const twilioClient = twilio(apiKey, apiKeySecret, { accountSid: accountSid });
 
-const WHITE_LIST = ["http://localhost:8080", "http://localhost:8081"];
-
-const corsOptionsDelegate = function (req, callback) {
-  var corsOptions = { origin: true, credentials: true };
-  if (WHITE_LIST.indexOf(req.header("Origin")) !== -1) {
-    corsOptions = { origin: true, credentials: true };
-  } else {
-    corsOptions = { origin: false };
-  }
-  corsOptions = { origin: true, credentials: true };
-  callback(null, corsOptions); // callback expects two parameters: error and options
-};
-
 app.use(express.json());
-
-app.use(cors(corsOptionsDelegate));
 // Serve static files from the public directory
 app.use(express.static("public"));
 
@@ -170,28 +154,24 @@ app.post("/audienceToken", async (req, res) => {
 
   try {
     // Get the first player streamer
-    var playerStreamerId = "";
-    if (!req.query.id) {
-      const playerStreamerList = await twilioClient.media.playerStreamer.list({
-        status: "started",
+    const playerStreamerList = await twilioClient.media.playerStreamer.list({
+      status: "started",
+    });
+    const playerStreamer = playerStreamerList.length
+      ? playerStreamerList[0]
+      : null;
+    // If no one is streaming, return a message
+    if (!playerStreamer) {
+      return res.status(200).send({
+        message: `No one is streaming right now`,
       });
-      const playerStreamer = playerStreamerList.length
-        ? playerStreamerList[0]
-        : null;
-      playerStreamerId = playerStreamer.sid;
-      // If no one is streaming, return a message
-      if (!playerStreamer) {
-        return res.status(200).send({
-          message: `No one is streaming right now`,
-        });
-      }
     }
     // Otherwise create an access token with a PlaybackGrant for the livestream
     const token = new AccessToken(accountSid, apiKey, apiKeySecret);
     playerStreamerId = req.query.id;
     // Create a playback grant and attach it to the access token
     const playbackGrant = await twilioClient.media
-      .playerStreamer(playerStreamerId)
+      .playerStreamer(playerStreamer.sid)
       .playbackGrant()
       .create({ ttl: 60 });
 
